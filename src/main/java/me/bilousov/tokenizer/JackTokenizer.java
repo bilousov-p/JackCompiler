@@ -71,7 +71,9 @@ public class JackTokenizer {
     }
 
     public String advance(){
-        this.currentToken = tokenIterator.next();
+        if(tokenIterator.hasNext()){
+            this.currentToken = tokenIterator.next();
+        }
 
         return currentToken;
     }
