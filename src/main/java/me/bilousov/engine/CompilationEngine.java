@@ -12,12 +12,14 @@ public class CompilationEngine {
     private List<String> compiledLines;
     private StringBuilder indentation;
     private List<String> statementTokens;
+    private List<String> opTokens;
 
     public CompilationEngine(JackTokenizer tokenizer){
         this.tokenizer = tokenizer;
         this.compiledLines = new ArrayList<>();
         this.indentation = new StringBuilder();
         this.statementTokens = new ArrayList<>(Arrays.asList("let", "if", "while", "do", "return"));
+        this.opTokens = new ArrayList<>(Arrays.asList("+", "-", "*", "/", "&amp;", "|", "&lt;", "&gt;", "="));
         this.tokenizer.advance();
     }
 
@@ -187,10 +189,16 @@ public class CompilationEngine {
 
         if(tokenizer.advance().equals("[")){
             writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-            compileExpression();
-
+            compileExpression(false);
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+            tokenizer.advance();
         }
 
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+        compileExpression(false);
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+
+        tokenizer.advance();
 
         decreaseIndentLevel();
         writeCloseTag("letStatement");
@@ -200,7 +208,27 @@ public class CompilationEngine {
         writeOpenTag("ifStatement");
         increaseIndentLevel();
 
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // if
+
+        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // (
+        compileExpression(false);
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+
+        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // {
         tokenizer.advance();
+        compileStatements();
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // }
+
+        tokenizer.advance();
+
+        if(tokenizer.getCurrentToken().equals("else")){
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // else
+            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // {
+            tokenizer.advance();
+            compileStatements();
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // }
+            tokenizer.advance();
+        }
 
         decreaseIndentLevel();
         writeCloseTag("ifStatement");
@@ -209,6 +237,15 @@ public class CompilationEngine {
     public void compileWhile(){
         writeOpenTag("whileStatement");
         increaseIndentLevel();
+
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // while
+        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // (
+        compileExpression(false);
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // {
+        tokenizer.advance();
+        compileStatements();
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // }
 
         tokenizer.advance();
 
@@ -220,6 +257,31 @@ public class CompilationEngine {
         writeOpenTag("doStatement");
         increaseIndentLevel();
 
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // do
+
+        String firstToken = tokenizer.advance();
+        String firstTokenType = tokenizer.tokenType();
+
+        if(tokenizer.advance().equals("(")){
+            writeTokenToXML(firstToken, firstTokenType); // varName
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // (
+            tokenizer.advance();
+            compileExpressionList();
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+            tokenizer.advance();
+        } else {
+            writeTokenToXML(firstToken, firstTokenType); // className | varName
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // .
+            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // subroutineName
+            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // (
+            tokenizer.advance();
+            compileExpressionList();
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+            tokenizer.advance();
+        }
+
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // ;
+
         tokenizer.advance();
 
         decreaseIndentLevel();
@@ -230,30 +292,104 @@ public class CompilationEngine {
         writeOpenTag("returnStatement");
         increaseIndentLevel();
 
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // return
+
+        if(!tokenizer.advance().equals(";")){
+            compileExpression(true);
+        }
+
+        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // ;
+
         tokenizer.advance();
 
         decreaseIndentLevel();
         writeCloseTag("returnStatement");
     }
 
-    private void compileExpression(){
+    private void compileExpression(boolean operateWithCurrentToken){
         writeOpenTag("expression");
         increaseIndentLevel();
 
+        compileTerm(operateWithCurrentToken);
 
+        while(opTokens.contains(tokenizer.getCurrentToken())){
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // op
+            compileTerm(false);
+        }
 
         decreaseIndentLevel();
         writeCloseTag("expression");
     }
 
-    private void compileTerm(){
+    private void compileTerm(boolean operateWithCurrentToken){
         writeOpenTag("term");
         increaseIndentLevel();
 
+        String firstTermToken = operateWithCurrentToken? tokenizer.getCurrentToken() : tokenizer.advance();
+        String firstTermTokenType = tokenizer.tokenType();
 
+        if(firstTermToken.equals("(")){
+            writeTokenToXML(firstTermToken, firstTermTokenType); // (
+            compileExpression(false);
+            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+
+            tokenizer.advance();
+        } else if(firstTermToken.equals("-") || firstTermToken.equals("~")){
+            writeTokenToXML(firstTermToken, firstTermTokenType); // unaryOp
+            tokenizer.advance();
+            compileTerm(true);
+
+        } else {
+            String secondTermToken = tokenizer.advance();
+             if(secondTermToken.equals("[")){
+                 writeTokenToXML(firstTermToken, firstTermTokenType); // varName
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // [
+                 compileExpression(false);
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // ]
+
+                 tokenizer.advance();
+             } else if(secondTermToken.equals("(")){
+                 writeTokenToXML(firstTermToken, firstTermTokenType); // varName
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // (
+                 tokenizer.advance();
+                 compileExpressionList();
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+                 tokenizer.advance();
+             } else if(secondTermToken.equals(".")){
+                 writeTokenToXML(firstTermToken, firstTermTokenType); // className | varName
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // .
+                 writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // subroutineName
+                 writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // (
+                 tokenizer.advance();
+                 compileExpressionList();
+                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
+                 tokenizer.advance();
+             }
+             else {
+                 writeTokenToXML(firstTermToken, firstTermTokenType); // constant
+             }
+
+        }
 
         decreaseIndentLevel();
         writeCloseTag("term");
+    }
+
+    private void compileExpressionList(){
+        writeOpenTag("expressionList");
+        increaseIndentLevel();
+
+        if(!tokenizer.getCurrentToken().equals(")")){
+            compileExpression(true);
+
+            while (tokenizer.getCurrentToken().equals(",")){
+                writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // ,
+                compileExpression(false);
+            }
+        }
+
+        decreaseIndentLevel();
+        writeCloseTag("expressionList");
     }
 
     private void increaseIndentLevel(){
