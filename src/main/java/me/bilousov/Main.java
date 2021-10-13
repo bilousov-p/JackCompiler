@@ -11,13 +11,19 @@ public class Main {
 
     public static void main(String[] args) throws IOException {
         File jackFileOrDir = new File(args[0]);
-        JackTokenizer tokenizer = new JackTokenizer(jackFileOrDir);
 
-        if(args.length > 1 && args[1].equals("tokens")){
-            XMLWriter.writeXMLForTokenizer(tokenizer, args[0]);
+        if (jackFileOrDir.isDirectory()) {
+            for (File file : jackFileOrDir.listFiles()) {
+                if (file.getName().endsWith(".jack")) {
+                    JackTokenizer tokenizer = new JackTokenizer(file);
+                    CompilationEngine compilationEngine = new CompilationEngine(tokenizer);
+                    XMLWriter.writeXMLFileWithLines(compilationEngine.compileClass(), file);
+                }
+            }
         } else {
+            JackTokenizer tokenizer = new JackTokenizer(jackFileOrDir);
             CompilationEngine compilationEngine = new CompilationEngine(tokenizer);
-            XMLWriter.writeXMLFileWithLines(compilationEngine.compileClass(), args[0]);
+            XMLWriter.writeXMLFileWithLines(compilationEngine.compileClass(), jackFileOrDir);
         }
     }
 }

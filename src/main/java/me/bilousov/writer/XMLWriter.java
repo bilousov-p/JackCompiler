@@ -12,7 +12,7 @@ public class XMLWriter {
     private static final String OUTPUT_FILE_EXTENSION = ".xml";
     private static final String LINE_SEPARATOR = System.getProperty("line.separator");
 
-    public static void writeXMLForTokenizer(JackTokenizer tokenizer, String path) throws IOException {
+    public static void writeXMLForTokenizer(JackTokenizer tokenizer, File file) throws IOException {
         List<String> xmlLines = new ArrayList<>();
         xmlLines.add("<tokens>");
 
@@ -22,18 +22,11 @@ public class XMLWriter {
         }
 
         xmlLines.add("</tokens>");
-        writeXMLFileWithLines(xmlLines, path);
+        writeXMLFileWithLines(xmlLines, file);
     }
 
-    public static void writeXMLFileWithLines(List<String> binaryLines, String path) throws IOException {
-        File vmFile = new File(path);
-        String outputFilePath;
-
-        if(vmFile.isDirectory()){
-            outputFilePath = path + "\\" + vmFile.getName() + OUTPUT_FILE_EXTENSION;
-        } else {
-            outputFilePath = path.replace(INPUT_FILE_EXTENSION, OUTPUT_FILE_EXTENSION);
-        }
+    public static void writeXMLFileWithLines(List<String> binaryLines, File file) throws IOException {
+        String outputFilePath = file.getPath().replace(INPUT_FILE_EXTENSION, OUTPUT_FILE_EXTENSION);
 
         FileOutputStream fos = new FileOutputStream(outputFilePath);
         BufferedWriter bw = new BufferedWriter(new OutputStreamWriter(fos));
