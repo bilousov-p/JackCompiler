@@ -1,25 +1,38 @@
 package me.bilousov.engine;
 
 import me.bilousov.tokenizer.JackTokenizer;
+import me.bilousov.util.Variable;
+import me.bilousov.util.VariableScope;
 
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
 
 public class CompilationEngine {
 
-    private JackTokenizer tokenizer;
-    private List<String> compiledLines;
-    private StringBuilder indentation;
-    private List<String> statementTokens;
-    private List<String> opTokens;
+    private final String fileName;
+
+    private final JackTokenizer tokenizer;
+    private final List<String> compiledLines;
+    private final StringBuilder indentation;
+    private final List<String> statementTokens;
+    private final List<String> opTokens;
+    private final List<Variable> symbolTable;
+    private final List<Variable> localSymbolTable;
+
+    private int fieldCount = 0;
+    private int staticFieldCount = 0;
 
     public CompilationEngine(JackTokenizer tokenizer){
+        this.fileName = tokenizer.getCurrentFile().getName();
         this.tokenizer = tokenizer;
         this.compiledLines = new ArrayList<>();
         this.indentation = new StringBuilder();
         this.statementTokens = new ArrayList<>(Arrays.asList("let", "if", "while", "do", "return"));
         this.opTokens = new ArrayList<>(Arrays.asList("+", "-", "*", "/", "&amp;", "|", "&lt;", "&gt;", "="));
+        this.symbolTable = new ArrayList<>();
+        this.localSymbolTable = new ArrayList<>();
         this.tokenizer.advance();
     }
 
@@ -50,28 +63,55 @@ public class CompilationEngine {
         return compiledLines;
     }
 
-    public void compileClassVarDec(){
-        writeOpenTag("classVarDec");
-        increaseIndentLevel();
+//    public void compileClassVarDec(){
+//        writeOpenTag("classVarDec");
+//        increaseIndentLevel();
+//
+//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//
+//        while(tokenizer.advance().equals(",")){
+//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//        }
+//
+//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//        tokenizer.advance();
+//        decreaseIndentLevel();
+//        writeCloseTag("classVarDec");
+//    }
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+    public void compileClassVarDec(){
+        Variable variable = new Variable();
+        variable.setKind(tokenizer.getCurrentToken());
+        variable.setVarOrderNumber(getFieldOrderNumber(tokenizer.getCurrentToken()));
+        variable.setType(tokenizer.advance());
+        variable.setName(tokenizer.advance());
+        variable.setScope(VariableScope.CLASS);
+
+        symbolTable.add(variable);
 
         while(tokenizer.advance().equals(",")){
-            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+            Variable varWithSameDec = new Variable();
+            varWithSameDec.setKind(variable.getKind());
+            varWithSameDec.setVarOrderNumber(getFieldOrderNumber(variable.getKind()));
+            varWithSameDec.setType(variable.getType());
+            varWithSameDec.setScope(VariableScope.CLASS);
+            varWithSameDec.setName(tokenizer.advance());
+
+            symbolTable.add(varWithSameDec);
         }
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
         tokenizer.advance();
-        decreaseIndentLevel();
-        writeCloseTag("classVarDec");
+        System.out.println(Arrays.toString(symbolTable.toArray()));
     }
 
     public void compileSubroutineDec(){
         writeOpenTag("subroutineDec");
         increaseIndentLevel();
+
+        boolean isMethod = tokenizer.getCurrentToken().equals("method");
 
         writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
         writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
@@ -80,7 +120,7 @@ public class CompilationEngine {
 
         writeOpenTag("parameterList");
         if(!tokenizer.advance().equals(")")){
-            compileParamList();
+            compileParamList(isMethod);
         }
         writeCloseTag("parameterList");
 
@@ -88,24 +128,60 @@ public class CompilationEngine {
 
         compileSubroutineBody();
 
+        localSymbolTable.clear();
         tokenizer.advance();
         decreaseIndentLevel();
         writeCloseTag("subroutineDec");
     }
 
-    public void compileParamList(){
-        increaseIndentLevel();
+//    public void compileParamList(){
+//        increaseIndentLevel();
+//
+//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//
+//        while(tokenizer.advance().equals(",")){
+//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//        }
+//
+//        decreaseIndentLevel();
+//    }
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+    public void compileParamList(boolean isMethodParams){
+        int argVarsCount = 0;
 
-        while(tokenizer.advance().equals(",")){
-            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
-            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+        if(isMethodParams){
+            Variable thisVariable = new Variable();
+            thisVariable.setType(fileName);
+            thisVariable.setName("this");
+            thisVariable.setKind("argument");
+            thisVariable.setVarOrderNumber(argVarsCount++);
+            thisVariable.setScope(VariableScope.SUBROUTINE);
+
+            localSymbolTable.add(thisVariable);
         }
 
-        decreaseIndentLevel();
+        Variable variable = new Variable();
+        variable.setType(tokenizer.getCurrentToken());
+        variable.setName(tokenizer.advance());
+        variable.setKind("argument");
+        variable.setVarOrderNumber(argVarsCount++);
+        variable.setScope(VariableScope.SUBROUTINE);
+
+        localSymbolTable.add(variable);
+
+        while(tokenizer.advance().equals(",")){
+            Variable nextVar = new Variable();
+            nextVar.setType(tokenizer.advance());
+            nextVar.setName(tokenizer.advance());
+            nextVar.setKind("argument");
+            nextVar.setVarOrderNumber(argVarsCount++);
+            nextVar.setScope(VariableScope.SUBROUTINE);
+
+            localSymbolTable.add(nextVar);
+        }
     }
 
     public void compileSubroutineBody(){
@@ -115,8 +191,9 @@ public class CompilationEngine {
         writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
 
         if(!tokenizer.advance().equals("}")){
+            AtomicInteger subroutineVarsCount = new AtomicInteger(0);
             while(tokenizer.getCurrentToken().equals("var")){
-                compileVarDec();
+                compileVarDec(subroutineVarsCount);
             }
 
             if(statementTokens.contains(tokenizer.getCurrentToken())){
@@ -130,24 +207,49 @@ public class CompilationEngine {
         writeCloseTag("subroutineBody");
     }
 
-    public void compileVarDec(){
-        writeOpenTag("varDec");
-        increaseIndentLevel();
+//    public void compileVarDec(){
+//        writeOpenTag("varDec");
+//        increaseIndentLevel();
+//
+//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//
+//        while(tokenizer.advance().equals(",")){
+//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+//        }
+//
+//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
+//        tokenizer.advance();
+//
+//        decreaseIndentLevel();
+//        writeCloseTag("varDec");
+//    }
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+    public void compileVarDec(AtomicInteger subroutineVarsCount){
+        System.out.println(subroutineVarsCount);
+        Variable variable = new Variable();
+        variable.setKind("local");
+        variable.setVarOrderNumber(subroutineVarsCount.getAndIncrement());
+        variable.setType(tokenizer.advance());
+        variable.setName(tokenizer.advance());
+        variable.setScope(VariableScope.SUBROUTINE);
+
+        localSymbolTable.add(variable);
 
         while(tokenizer.advance().equals(",")){
-            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
-            writeTokenToXML(tokenizer.advance(), tokenizer.tokenType());
+            Variable varWithSameDec = new Variable();
+            varWithSameDec.setKind(variable.getKind());
+            varWithSameDec.setVarOrderNumber(subroutineVarsCount.getAndIncrement());
+            varWithSameDec.setType(variable.getType());
+            varWithSameDec.setScope(variable.getScope());
+            varWithSameDec.setName(tokenizer.advance());
+
+            localSymbolTable.add(varWithSameDec);
         }
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType());
         tokenizer.advance();
-
-        decreaseIndentLevel();
-        writeCloseTag("varDec");
     }
 
     public void compileStatements(){
@@ -390,6 +492,10 @@ public class CompilationEngine {
 
         decreaseIndentLevel();
         writeCloseTag("expressionList");
+    }
+
+    private int getFieldOrderNumber(String fieldKind){
+        return fieldKind.equals("field") ? fieldCount++ : staticFieldCount++;
     }
 
     private void increaseIndentLevel(){

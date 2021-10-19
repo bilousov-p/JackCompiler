@@ -1,6 +1,5 @@
 package me.bilousov.tokenizer;
 
-import me.bilousov.util.JackKeyword;
 import me.bilousov.util.TokenType;
 
 import java.io.*;
@@ -146,5 +145,13 @@ public class JackTokenizer {
         String stringVal = currentToken;
 
         return stringVal.replace("\"", "");
+    }
+
+    public File getCurrentFile() {
+        return currentFile;
+    }
+
+    public void setCurrentFile(File currentFile) {
+        this.currentFile = currentFile;
     }
 }
