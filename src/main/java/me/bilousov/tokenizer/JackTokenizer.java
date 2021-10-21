@@ -78,18 +78,18 @@ public class JackTokenizer {
     }
 
     public String getCurrentToken(){
-        if(tokenType().equals(TokenType.SYMBOL.getXmlLabel())){
+        if(xmlTokenType().equals(TokenType.SYMBOL.getXmlLabel())){
             return symbol();
         }
 
-        if(tokenType().equals(TokenType.STRING_CONST.getXmlLabel())){
+        if(xmlTokenType().equals(TokenType.STRING_CONST.getXmlLabel())){
             return stringVal();
         }
 
         return currentToken;
     }
 
-    public String tokenType(){
+    public String xmlTokenType(){
         if(keywords.contains(currentToken)){
             return TokenType.KEYWORD.getXmlLabel();
         }
@@ -107,6 +107,26 @@ public class JackTokenizer {
         }
 
         return TokenType.IDENTIFIER.getXmlLabel();
+    }
+
+    public TokenType tokenType(){
+        if(keywords.contains(currentToken)){
+            return TokenType.KEYWORD;
+        }
+
+        if(symbols.contains(currentToken)){
+            return TokenType.SYMBOL;
+        }
+
+        if(isInteger(currentToken)){
+            return TokenType.INT_CONST;
+        }
+
+        if(currentToken.contains("\"")){
+            return TokenType.STRING_CONST;
+        }
+
+        return TokenType.IDENTIFIER;
     }
 
     public String keyWord(){

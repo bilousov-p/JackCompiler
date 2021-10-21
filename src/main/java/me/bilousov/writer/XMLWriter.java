@@ -18,7 +18,7 @@ public class XMLWriter {
 
         while (tokenizer.hasMoreTokens()){
             tokenizer.advance();
-            xmlLines.add("<" + tokenizer.tokenType() + ">" + " " + tokenizer.getCurrentToken() + " </" + tokenizer.tokenType() + ">");
+            xmlLines.add("<" + tokenizer.xmlTokenType() + ">" + " " + tokenizer.getCurrentToken() + " </" + tokenizer.xmlTokenType() + ">");
         }
 
         xmlLines.add("</tokens>");
