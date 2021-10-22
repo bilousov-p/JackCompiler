@@ -9,7 +9,7 @@ import java.util.List;
 public class XMLWriter {
 
     private static final String INPUT_FILE_EXTENSION = ".jack";
-    private static final String OUTPUT_FILE_EXTENSION = ".xml";
+    private static final String OUTPUT_FILE_EXTENSION = ".vm";
     private static final String LINE_SEPARATOR = System.getProperty("line.separator");
 
     public static void writeXMLForTokenizer(JackTokenizer tokenizer, File file) throws IOException {
