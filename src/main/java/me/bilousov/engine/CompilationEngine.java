@@ -9,6 +9,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.stream.Collectors;
 
 public class CompilationEngine {
 
@@ -80,8 +81,8 @@ public class CompilationEngine {
 
         while(tokenizer.advance().equals(",")){
             Variable varWithSameDec = new Variable();
-            varWithSameDec.setKind(variable.getKind());
-            varWithSameDec.setVarOrderNumber(getFieldOrderNumber(variable.getKind()));
+            varWithSameDec.setKind(variable.getKind(false));
+            varWithSameDec.setVarOrderNumber(getFieldOrderNumber(variable.getKind(false)));
             varWithSameDec.setType(variable.getType());
             varWithSameDec.setScope(VariableScope.CLASS);
             varWithSameDec.setName(tokenizer.advance());
@@ -98,10 +99,9 @@ public class CompilationEngine {
         increaseIndentLevel();
 
         boolean isMethod = tokenizer.getCurrentToken().equals("method");
+        boolean isConstructor = tokenizer.getCurrentToken().equals("constructor");
+        boolean isVoid = tokenizer.advance().equals("void");
 
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-        writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType());
-        // writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType());
         String subroutineName = tokenizer.advance();
 
         writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType());
@@ -114,7 +114,7 @@ public class CompilationEngine {
 
         writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
 
-        compileSubroutineBody(subroutineName);
+        compileSubroutineBody(subroutineName, isConstructor, isVoid, isMethod);
 
         localSymbolTable.clear();
         tokenizer.advance();
@@ -157,11 +157,8 @@ public class CompilationEngine {
         }
     }
 
-    public void compileSubroutineBody(String subroutineName){
-        writeOpenTag("subroutineBody");
-        increaseIndentLevel();
-
-        writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType());
+    public void compileSubroutineBody(String subroutineName, boolean isConstructor, boolean isVoid, boolean isMethod){
+        tokenizer.advance();
 
         if(!tokenizer.advance().equals("}")){
             AtomicInteger subroutineVarsCount = new AtomicInteger(0);
@@ -171,15 +168,21 @@ public class CompilationEngine {
 
             writeVMCommand("function " + fileName + "." + subroutineName + " " + subroutineVarsCount, TokenType.IDENTIFIER, false);
 
+            if(isConstructor){
+                writeVMCommand("push constant " + symbolTable.stream().filter(v -> v.getKind(false).equals("field")).count(), TokenType.IDENTIFIER, false);
+                writeVMCommand("call Memory.alloc 1", TokenType.IDENTIFIER, false);
+                writeVMCommand("pop pointer 0", TokenType.IDENTIFIER, false);
+            }
+
+            if(isMethod){
+                writeVMCommand("push argument 0", TokenType.IDENTIFIER, false);
+                writeVMCommand("pop pointer 0", TokenType.IDENTIFIER, false);
+            }
+
             if(statementTokens.contains(tokenizer.getCurrentToken())){
-                compileStatements();
+                compileStatements(isConstructor, isVoid);
             }
         }
-
-        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-
-        decreaseIndentLevel();
-        writeCloseTag("subroutineBody");
     }
 
     public void compileVarDec(AtomicInteger subroutineVarsCount){
@@ -194,7 +197,7 @@ public class CompilationEngine {
 
         while(tokenizer.advance().equals(",")){
             Variable varWithSameDec = new Variable();
-            varWithSameDec.setKind(variable.getKind());
+            varWithSameDec.setKind(variable.getKind(false));
             varWithSameDec.setVarOrderNumber(subroutineVarsCount.getAndIncrement());
             varWithSameDec.setType(variable.getType());
             varWithSameDec.setScope(variable.getScope());
@@ -206,7 +209,7 @@ public class CompilationEngine {
         tokenizer.advance();
     }
 
-    public void compileStatements(){
+    public void compileStatements(boolean isConstructor, boolean isVoid){
         writeOpenTag("statements");
         increaseIndentLevel();
 
@@ -216,17 +219,17 @@ public class CompilationEngine {
                     compileLet();
                     break;
                 case "if":
-                    compileIf();
+                    compileIf(isConstructor, isVoid);
                     break;
                 case "while":
-                    compileWhile();
+                    compileWhile(isConstructor, isVoid);
                     break;
                 case "do":
-                    compileDo();
+                    compileDo(isVoid);
                     break;
-                case "return":
-                    compileReturn();
-                    break;
+               case "return":
+                   compileReturn(isConstructor, isVoid);
+                   break;
                 default:
                     System.out.println("Could not map statement name to call");
             }
@@ -235,30 +238,6 @@ public class CompilationEngine {
         decreaseIndentLevel();
         writeCloseTag("statements");
     }
-
-//    public void compileLet(){
-//        writeOpenTag("letStatement");
-//        increaseIndentLevel();
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-//        writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType());
-//
-//        if(tokenizer.advance().equals("[")){
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-//            compileExpression(false);
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-//            tokenizer.advance();
-//        }
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-//        compileExpression(false);
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
-//
-//        tokenizer.advance();
-//
-//        decreaseIndentLevel();
-//        writeCloseTag("letStatement");
-//    }
 
     public void compileLet(){
         String identifier = tokenizer.advance();
@@ -270,22 +249,29 @@ public class CompilationEngine {
                 .orElse(symbolTable.stream().filter(v -> v.getName().equals(identifier)).findFirst().orElse(null));
 
         if(tokenizer.advance().equals("[")){
-            // TODO: arrays compilation
-            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
+            writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
             compileExpression(false);
-            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType());
+            writeVMCommand("add", TokenType.IDENTIFIER, false);
+
             tokenizer.advance();
+
+            compileExpression(false);
+            writeVMCommand("pop temp 0", TokenType.IDENTIFIER, false);
+            writeVMCommand("pop pointer 1", TokenType.IDENTIFIER, false);
+            writeVMCommand("push temp 0", TokenType.IDENTIFIER, false);
+            writeVMCommand("pop that 0", TokenType.IDENTIFIER, false);
+
+        } else {
+            compileExpression(false);
+
+            writeVMCommand("pop " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
         }
-
-        compileExpression(false);
-
-        writeVMCommand("pop " + variable.getKind() + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
 
         tokenizer.advance();
     }
 
 
-    public void compileIf(){
+    public void compileIf(boolean isConstructor, boolean isVoid){
         String ifLabel = getIfLabel();
         String ifEndLabel = getIfLabel();
 
@@ -298,7 +284,7 @@ public class CompilationEngine {
         tokenizer.advance();
         tokenizer.advance();
 
-        compileStatements();
+        compileStatements(isConstructor, isVoid);
         writeVMCommand("goto " + ifEndLabel, TokenType.IDENTIFIER, false);
 
         tokenizer.advance();
@@ -309,7 +295,7 @@ public class CompilationEngine {
             tokenizer.advance();
             tokenizer.advance();
 
-            compileStatements();
+            compileStatements(isConstructor, isVoid);
 
             tokenizer.advance();
         }
@@ -317,7 +303,7 @@ public class CompilationEngine {
         writeVMCommand("label " + ifEndLabel, TokenType.IDENTIFIER, false);
     }
 
-    public void compileWhile(){
+    public void compileWhile(boolean isConstructor, boolean isVoid){
         String whileLabel = getWhileLabel();
         String whileEndLabel = getWhileLabel();
 
@@ -331,7 +317,7 @@ public class CompilationEngine {
         tokenizer.advance();
         tokenizer.advance();
 
-        compileStatements();
+        compileStatements(isConstructor, isVoid);
         writeVMCommand("goto " + whileLabel, TokenType.IDENTIFIER, false);
         writeVMCommand("label " + whileEndLabel, TokenType.IDENTIFIER, false);
 
@@ -346,57 +332,42 @@ public class CompilationEngine {
         return "IF_" + ifLabelId++;
     }
 
-//    public void compileDo(){
-//        writeOpenTag("doStatement");
-//        increaseIndentLevel();
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // do
-//
-//        String firstToken = tokenizer.advance();
-//        String firstTokenType = tokenizer.xmlTokenType();
-//
-//        if(tokenizer.advance().equals("(")){
-//            writeTokenToXML(firstToken, firstTokenType); // varName
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // (
-//            tokenizer.advance();
-//            compileExpressionList();
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // )
-//            tokenizer.advance();
-//        } else {
-//            writeTokenToXML(firstToken, firstTokenType); // className | varName
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // .
-//            writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType()); // subroutineName
-//            writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType()); // (
-//            tokenizer.advance();
-//            compileExpressionList();
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // )
-//            tokenizer.advance();
-//        }
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // ;
-//
-//        tokenizer.advance();
-//
-//        decreaseIndentLevel();
-//        writeCloseTag("doStatement");
-//    }
-
-    public void compileDo(){
+    public void compileDo(boolean isVoid){
         String firstToken = tokenizer.advance();
 
         if(tokenizer.advance().equals("(")){
             tokenizer.advance();
 
-            int argsCount = compileExpressionList();
+            writeVMCommand("push pointer 0", TokenType.IDENTIFIER, false);
+            int argsCount = compileExpressionList() + 1;
             writeVMCommand("call " + fileName + "." + firstToken + " " + argsCount, TokenType.IDENTIFIER, false);
 
         } else {
+            int argsCount = 0;
+            Variable variable = localSymbolTable
+                    .stream()
+                    .filter(v -> v.getName().equals(firstToken))
+                    .findFirst()
+                    .orElse(symbolTable.stream().filter(v -> v.getName().equals(firstToken)).findFirst().orElse(null));
+
+            if (variable != null){
+                argsCount++;
+                writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
+            } else {
+                variable = new Variable(firstToken);
+                variable.setType(firstToken);
+            }
+
             String subroutineName = tokenizer.advance();
             tokenizer.advance();
             tokenizer.advance();
 
-            int argsCount = compileExpressionList();
-            writeVMCommand("call " + firstToken + "." + subroutineName + " " + argsCount, TokenType.IDENTIFIER, false);
+            argsCount+=compileExpressionList();
+            writeVMCommand("call " + variable.getType() + "." + subroutineName + " " + argsCount, TokenType.IDENTIFIER, false);
+        }
+
+        if(isVoid){
+            writeVMCommand("pop temp 0", TokenType.IDENTIFIER, false);
         }
 
         tokenizer.advance();
@@ -421,9 +392,18 @@ public class CompilationEngine {
 //        writeCloseTag("returnStatement");
 //    }
 
-    public void compileReturn(){
-        if(!tokenizer.advance().equals(";")){
+    public void compileReturn(boolean isConstructor, boolean isVoid){
+        if(!tokenizer.advance().equals(";") && !isConstructor && !isVoid){
             compileExpression(true);
+        }
+
+        if(isConstructor){
+            writeVMCommand("push pointer 0", TokenType.IDENTIFIER, false);
+            tokenizer.advance();
+        }
+
+        if(isVoid){
+            writeVMCommand("push constant 0", TokenType.IDENTIFIER, false);
         }
 
         writeVMCommand("return", TokenType.IDENTIFIER, false);
@@ -514,35 +494,50 @@ public class CompilationEngine {
         } else {
             String secondTermToken = tokenizer.advance();
             if(secondTermToken.equals("[")){
-                // work with array ???
-                // writeTokenToXML(firstTermToken, firstTermTokenTypeXMl); // varName
-                // writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // [
-                // compileExpression(false);
-                // writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // ]
+                String arrName = firstTermToken;
+                Variable variable = localSymbolTable
+                        .stream()
+                        .filter(v -> v.getName().equals(arrName))
+                        .findFirst()
+                        .orElse(symbolTable.stream().filter(v -> v.getName().equals(arrName)).findFirst().orElse(null));
 
-                // tokenizer.advance();
+                writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
+                compileExpression(false);
+                writeVMCommand("add", TokenType.IDENTIFIER, false);
+
+                tokenizer.advance();
             } else if(secondTermToken.equals("(")){
                 tokenizer.advance();
-                int argsCount = compileExpressionList();
+
+                writeVMCommand("push pointer 0", TokenType.IDENTIFIER, false);
+
+                int argsCount = compileExpressionList() + 1;
                 writeVMCommand("call " + fileName + "." + firstTermToken + " " + argsCount, TokenType.IDENTIFIER, false);
 
                 tokenizer.advance();
             } else if(secondTermToken.equals(".")){
-                // work with objects
-                // writeTokenToXML(firstTermToken, firstTermTokenTypeXMl); // className | varName
-                // writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // .
-                // writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType()); // subroutineName
-                // writeTokenToXML(tokenizer.advance(), tokenizer.xmlTokenType()); // (
-                // tokenizer.advance();
-                // compileExpressionList();
-                // writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // )
-                // tokenizer.advance();
+                int argsCount = 0;
+
+                Variable variable = localSymbolTable
+                        .stream()
+                        .filter(v -> v.getName().equals(firstTermToken))
+                        .findFirst()
+                        .orElse(symbolTable.stream().filter(v -> v.getName().equals(firstTermToken)).findFirst().orElse(null));
+
+                if (variable != null){
+                    argsCount++;
+                    writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
+                } else {
+                    variable = new Variable(firstTermToken);
+                    variable.setType(firstTermToken);
+                }
+
                 String subroutineName = tokenizer.advance();
                 tokenizer.advance();
                 tokenizer.advance();
 
-                int argsCount = compileExpressionList();
-                writeVMCommand("call " + firstTermToken + "." + subroutineName + " " + argsCount, TokenType.IDENTIFIER, false);
+                argsCount+=compileExpressionList();
+                writeVMCommand("call " + variable.getType() + "." + subroutineName + " " + argsCount, TokenType.IDENTIFIER, false);
                 tokenizer.advance();
             }
             else {
@@ -553,7 +548,7 @@ public class CompilationEngine {
                         writeVMCommand("push constant " + 0, TokenType.IDENTIFIER, false); // constant
                         writeVMCommand("not", TokenType.IDENTIFIER, false); // constant
                     } else {
-                        writeVMCommand("push constant " + 1, TokenType.IDENTIFIER, false); // constant
+                        writeVMCommand("push constant " + 0, TokenType.IDENTIFIER, false); // constant
                     }
                 }
                 else {
@@ -562,7 +557,12 @@ public class CompilationEngine {
                             .filter(v -> v.getName().equals(firstTermToken))
                             .findFirst()
                             .orElse(symbolTable.stream().filter(v -> v.getName().equals(firstTermToken)).findFirst().orElse(null));
-                    writeVMCommand("push " + variable.getKind() + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false); // variable
+
+                    if(firstTermToken.equals("this")){
+                        writeVMCommand("push pointer 0", TokenType.IDENTIFIER, false);
+                    } else {
+                        writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
+                    }
                 }
 
             }
@@ -650,6 +650,9 @@ public class CompilationEngine {
                         break;
                     case "*":
                         commandToWrite = "call Math.multiply 2";
+                        break;
+                    case "/":
+                        commandToWrite = "call Math.divide 2";
                         break;
                     default:
                         commandToWrite = "unknown symbol " + command;

@@ -19,6 +19,10 @@ public class Variable {
         this.varOrderNumber = varOrderNumber;
     }
 
+    public Variable(String name){
+        this.name = name;
+    }
+
     public String getName() {
         return name;
     }
@@ -35,7 +39,11 @@ public class Variable {
         this.type = type;
     }
 
-    public String getKind() {
+    public String getKind(boolean inStackUsage) {
+        if(kind.equals("field") && inStackUsage){
+            return "this";
+        }
+
         return kind;
     }
 
