@@ -82,10 +82,6 @@ public class JackTokenizer {
             return symbol();
         }
 
-        if(xmlTokenType().equals(TokenType.STRING_CONST.getXmlLabel())){
-            return stringVal();
-        }
-
         return currentToken;
     }
 

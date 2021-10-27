@@ -9,7 +9,6 @@ import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
-import java.util.stream.Collectors;
 
 public class CompilationEngine {
 
@@ -91,7 +90,6 @@ public class CompilationEngine {
         }
 
         tokenizer.advance();
-        System.out.println(Arrays.toString(symbolTable.toArray()));
     }
 
     public void compileSubroutineDec(){
@@ -374,24 +372,6 @@ public class CompilationEngine {
         tokenizer.advance();
     }
 
-//    public void compileReturn(){
-//        writeOpenTag("returnStatement");
-//        increaseIndentLevel();
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // return
-//
-//        if(!tokenizer.advance().equals(";")){
-//            compileExpression(true);
-//        }
-//
-//        writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // ;
-//
-//        tokenizer.advance();
-//
-//        decreaseIndentLevel();
-//        writeCloseTag("returnStatement");
-//    }
-
     public void compileReturn(boolean isConstructor, boolean isVoid){
         if(!tokenizer.advance().equals(";") && !isConstructor && !isVoid){
             compileExpression(true);
@@ -423,60 +403,6 @@ public class CompilationEngine {
         }
     }
 
-//    private void compileTerm(boolean operateWithCurrentToken){
-//        writeOpenTag("term");
-//        increaseIndentLevel();
-//
-//        String firstTermToken = operateWithCurrentToken? tokenizer.getCurrentToken() : tokenizer.advance();
-//        String firstTermTokenType = tokenizer.tokenType();
-//
-//        if(firstTermToken.equals("(")){
-//            writeTokenToXML(firstTermToken, firstTermTokenType); // (
-//            compileExpression(false);
-//            writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
-//
-//            tokenizer.advance();
-//        } else if(firstTermToken.equals("-") || firstTermToken.equals("~")){
-//            writeTokenToXML(firstTermToken, firstTermTokenType); // unaryOp
-//            tokenizer.advance();
-//            compileTerm(true);
-//
-//        } else {
-//            String secondTermToken = tokenizer.advance();
-//             if(secondTermToken.equals("[")){
-//                 writeTokenToXML(firstTermToken, firstTermTokenType); // varName
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // [
-//                 compileExpression(false);
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // ]
-//
-//                 tokenizer.advance();
-//             } else if(secondTermToken.equals("(")){
-//                 writeTokenToXML(firstTermToken, firstTermTokenType); // varName
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // (
-//                 tokenizer.advance();
-//                 compileExpressionList();
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
-//                 tokenizer.advance();
-//             } else if(secondTermToken.equals(".")){
-//                 writeTokenToXML(firstTermToken, firstTermTokenType); // className | varName
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // .
-//                 writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // subroutineName
-//                 writeTokenToXML(tokenizer.advance(), tokenizer.tokenType()); // (
-//                 tokenizer.advance();
-//                 compileExpressionList();
-//                 writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.tokenType()); // )
-//                 tokenizer.advance();
-//             }
-//             else {
-//                 writeTokenToXML(firstTermToken, firstTermTokenType); // constant
-//             }
-//
-//        }
-//
-//        decreaseIndentLevel();
-//        writeCloseTag("term");
-//    }
-
     private void compileTerm(boolean operateWithCurrentToken){
         String firstTermToken = operateWithCurrentToken? tokenizer.getCurrentToken() : tokenizer.advance();
         String firstTermTokenTypeXMl = tokenizer.xmlTokenType();
@@ -491,6 +417,19 @@ public class CompilationEngine {
             compileTerm(true);
             writeVMCommand(firstTermToken, firstTermTokenType, true);
 
+        } else if(firstTermToken.startsWith("\"")){
+            String stringValue = firstTermToken.replace("\"", "");
+            char[] stringChars = stringValue.toCharArray();
+
+            writeVMCommand("push constant " + stringValue.length(), TokenType.IDENTIFIER, false);
+            writeVMCommand("call String.new 1", TokenType.IDENTIFIER, false);
+
+            for(char ch : stringChars){
+                writeVMCommand("push constant " + (int) ch, TokenType.IDENTIFIER, false);
+                writeVMCommand("call String.appendChar 2", TokenType.IDENTIFIER, false);
+            }
+
+            tokenizer.advance();
         } else {
             String secondTermToken = tokenizer.advance();
             if(secondTermToken.equals("[")){
@@ -504,6 +443,8 @@ public class CompilationEngine {
                 writeVMCommand("push " + variable.getKind(true) + " " + variable.getVarOrderNumber(), TokenType.IDENTIFIER, false);
                 compileExpression(false);
                 writeVMCommand("add", TokenType.IDENTIFIER, false);
+                writeVMCommand("pop pointer 1", TokenType.IDENTIFIER, false);
+                writeVMCommand("push that 0", TokenType.IDENTIFIER, false);
 
                 tokenizer.advance();
             } else if(secondTermToken.equals("(")){
@@ -543,7 +484,7 @@ public class CompilationEngine {
             else {
                 if(isNumeric(firstTermToken)){
                     writeVMCommand("push constant " + firstTermToken, TokenType.IDENTIFIER, false); // constant
-                } else if (firstTermToken.equals("true") || firstTermToken.equals("false")){
+                } else if (firstTermToken.equals("true") || firstTermToken.equals("false") || firstTermToken.equals("null")){
                     if(firstTermToken.equals("true")){
                         writeVMCommand("push constant " + 0, TokenType.IDENTIFIER, false); // constant
                         writeVMCommand("not", TokenType.IDENTIFIER, false); // constant
@@ -569,23 +510,6 @@ public class CompilationEngine {
 
         }
     }
-
-//    private void compileExpressionList(){
-//        writeOpenTag("expressionList");
-//        increaseIndentLevel();
-//
-//        if(!tokenizer.getCurrentToken().equals(")")){
-//            compileExpression(true);
-//
-//            while (tokenizer.getCurrentToken().equals(",")){
-//                writeTokenToXML(tokenizer.getCurrentToken(), tokenizer.xmlTokenType()); // ,
-//                compileExpression(false);
-//            }
-//        }
-//
-//        decreaseIndentLevel();
-//        writeCloseTag("expressionList");
-//    }
 
     private int compileExpressionList(){
         int argsCount = 0;
