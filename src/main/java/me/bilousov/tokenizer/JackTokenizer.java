@@ -1,6 +1,5 @@
 package me.bilousov.tokenizer;
 
-import me.bilousov.util.JackKeyword;
 import me.bilousov.util.TokenType;
 
 import java.io.*;
